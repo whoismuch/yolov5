@@ -104,7 +104,7 @@ class ComputeLoss:
     sort_obj_iou = False
 
     # Compute losses
-    def __init__(self, model, autobalance=False):
+    def __init__(self, model, autobalance=False, group_lasso_weight=1.0):
         """Initializes ComputeLoss with model and autobalance option, autobalances losses if True."""
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
@@ -130,6 +130,91 @@ class ComputeLoss:
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
+        self.group_lasso_weight = group_lasso_weight  # weight for group lasso regularization
+        self.groups = self.define_groups(model)
+        self.filters_per_group = 8  # filters per group for Group Lasso
+        print("СКОЛЬКО ГРУППА", len(self.groups))
+
+    def define_groups(self, model):
+        """Defines groups of parameters for Group Lasso regularization."""
+        groups = []
+
+        # Группа 0: Входные конволюционные слои
+        group0 = [
+            model.model[0],  # Conv2d(3, 32, kernel_size=(6, 6), stride=(2, 2), padding=(2, 2), bias=False)
+            model.model[1],  # Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        ]
+        groups.append(nn.Sequential(*group0))
+
+        # Группа 1: Первый C3 блок и следующий Conv слой
+        group1 = [
+            model.model[2],  # C3 блок
+            model.model[3],  # Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        ]
+        groups.append(nn.Sequential(*group1))
+
+        # Группа 2: Второй C3 блок и следующий Conv слой
+        group2 = [
+            model.model[4],  # C3 блок
+            model.model[5],  # Conv2d(128, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        ]
+        groups.append(nn.Sequential(*group2))
+
+        # Группа 3: Третий C3 блок и следующий Conv слой
+        group3 = [
+            model.model[6],  # C3 блок
+            model.model[7],  # Conv2d(256, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        ]
+        groups.append(nn.Sequential(*group3))
+
+        # Группа 4: Четвертый C3 блок и SPPF слой
+        group4 = [
+            model.model[8],  # C3 блок
+            model.model[9],  # SPPF слой
+        ]
+        groups.append(nn.Sequential(*group4))
+
+        # Группа 5: Последующие слои (Upsample, Concat, C3, Conv, Upsample, Concat, C3, Conv, Concat, C3, Conv, Concat, C3)
+        group5 = [
+            model.model[10],  # Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            model.model[11],  # Upsample(scale_factor=2.0, mode='nearest')
+            model.model[12],  # Concat
+            model.model[13],  # C3 блок
+            model.model[14],  # Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            model.model[15],  # Upsample(scale_factor=2.0, mode='nearest')
+            model.model[16],  # Concat
+            model.model[17],  # C3 блок
+            model.model[18],  # Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+            model.model[19],  # Concat
+            model.model[20],  # C3 блок
+            model.model[21],  # Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+            model.model[22],  # Concat
+            model.model[23],  # C3 блок
+        ]
+        groups.append(nn.Sequential(*group5))
+
+        return groups
+
+    def get_conv_params(self, layer):
+        conv_params = []
+        if isinstance(layer, nn.Conv2d):
+            conv_params.append(layer.weight)
+        elif isinstance(layer, nn.Sequential) or isinstance(layer, nn.Module):
+            for sublayer in layer.children():
+                conv_params.extend(self.get_conv_params(sublayer))
+        return conv_params
+
+    def compute_group_lasso_loss(self):
+        """Computes the Group Lasso loss for the defined groups of parameters."""
+        group_lasso_loss = 0
+        for group in self.groups:
+            group_loss = 0
+            for layer in group:
+                conv_params = self.get_conv_params(layer)
+                for param in conv_params:
+                    group_loss += torch.sqrt(torch.sum(param ** 2))
+            group_lasso_loss += group_loss
+        return group_lasso_loss
 
     def __call__(self, p, targets):  # predictions, targets
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
@@ -186,7 +271,15 @@ class ComputeLoss:
         lcls *= self.hyp["cls"]
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        # Add Group Lasso loss
+        group_lasso_loss = self.compute_group_lasso_loss()
+        group_lasso_loss_tensor = torch.tensor(group_lasso_loss).unsqueeze(0)
+
+        # return (lbox + lobj + lcls + group_lasso_loss) * bs, torch.cat(
+        #     (lbox, lobj, lcls, group_lasso_loss.unsqueeze(0))).detach()
+
+        return (lbox + lobj + lcls + group_lasso_loss) * bs, torch.cat(
+            (lbox, lobj, lcls, group_lasso_loss_tensor)).detach()
 
     def build_targets(self, p, targets):
         """Prepares model targets from input targets (image,class,x,y,w,h) for loss computation, returning class, box,
