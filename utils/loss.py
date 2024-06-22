@@ -133,7 +133,6 @@ class ComputeLoss:
         self.group_lasso_weight = group_lasso_weight  # weight for group lasso regularization
         self.groups = self.define_groups(model)
         self.filters_per_group = 8  # filters per group for Group Lasso
-        print("СКОЛЬКО ГРУППА", len(self.groups))
 
     def define_groups(self, model):
         """Defines groups of parameters for Group Lasso regularization."""
