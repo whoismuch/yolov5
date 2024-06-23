@@ -137,10 +137,10 @@ class ComputeLoss:
 
     def compute_rademacher_complexity(self):
         """Computes the Rademacher complexity for the model parameters."""
-        rademacher_penalty = 0
-        for param, rademacher_vector in zip(self.model.parameters(), self.rademacher_vars):
-            rademacher_penalty += torch.sum((param * rademacher_vector).pow(2))
-        return rademacher_penalty
+        rademacher_sum = 0.0
+        for param, rademacher_var in zip(self.model.parameters(), self.rademacher_vars):
+            rademacher_sum += torch.sum(rademacher_var * param)
+        return rademacher_sum
 
     def __call__(self, p, targets):  # predictions, targets
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
