@@ -199,7 +199,7 @@ class ComputeLoss:
 
         # Rademacher regularization
         rademacher_penalty = self.rademacher_lambda * self.compute_rademacher_complexity()
-        rademacher_penalty_tensor = torch.tensor(rademacher_penalty).unsqueeze(0)
+        rademacher_penalty_tensor = torch.abs(torch.tensor(rademacher_penalty)).unsqueeze(0)
         loss = (lbox + lobj + lcls + rademacher_penalty) * bs
 
         return loss, torch.cat((lbox, lobj, lcls, rademacher_penalty_tensor)).detach()
