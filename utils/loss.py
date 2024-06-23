@@ -104,7 +104,7 @@ class ComputeLoss:
     sort_obj_iou = False
 
     # Compute losses
-    def __init__(self, model, autobalance=False):
+    def __init__(self, model, autobalance=False, rademacher_lambda=0.1):
         """Initializes ComputeLoss with model and autobalance option, autobalances losses if True."""
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
@@ -130,6 +130,17 @@ class ComputeLoss:
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
+        self.model = model
+        self.rademacher_lambda = rademacher_lambda
+        self.rademacher_vars = [torch.randint(0, 2, param.shape, device=self.device).float() * 2 - 1 for param in
+                                model.parameters()]
+
+    def compute_rademacher_complexity(self):
+        """Computes the Rademacher complexity for the model parameters."""
+        rademacher_sum = 0.0
+        for param, rademacher_var in zip(self.model.parameters(), self.rademacher_vars):
+            rademacher_sum += torch.sum(rademacher_var * param)
+        return rademacher_sum / len(list(self.model.parameters()))
 
     def __call__(self, p, targets):  # predictions, targets
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
@@ -186,7 +197,12 @@ class ComputeLoss:
         lcls *= self.hyp["cls"]
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        # Rademacher regularization
+        rademacher_penalty = self.rademacher_lambda * self.compute_rademacher_complexity()
+        rademacher_penalty_tensor = torch.tensor(rademacher_penalty).unsqueeze(0)
+        loss = (lbox + lobj + lcls + rademacher_penalty) * bs
+
+        return loss, torch.cat((lbox, lobj, lcls, rademacher_penalty_tensor)).detach()
 
     def build_targets(self, p, targets):
         """Prepares model targets from input targets (image,class,x,y,w,h) for loss computation, returning class, box,
