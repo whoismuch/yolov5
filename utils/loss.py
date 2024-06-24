@@ -211,7 +211,7 @@ class ComputeLoss:
             for layer in group:
                 conv_params = self.get_conv_params(layer)
                 for param in conv_params:
-                    group_loss += torch.sqrt(torch.sum(param ** 2))
+                    group_loss += torch.sum(param ** 2)
             group_lasso_loss += group_loss
         return group_lasso_loss
 

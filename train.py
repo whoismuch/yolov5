@@ -100,6 +100,14 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 GIT_INFO = check_git_info()
 
 
+def count_zero_elements(model):
+    total_params = 0
+    zero_params = 0
+    for param in model.parameters():
+        total_params += param.numel()
+        zero_params += torch.sum(param == 0).item()
+    return zero_params, total_params
+
 def train(hyp, opt, device, callbacks):
     """
     Trains YOLOv5 model with given hyperparameters, options, and device, managing datasets, model architecture, loss
@@ -479,6 +487,10 @@ def train(hyp, opt, device, callbacks):
 
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training -----------------------------------------------------------------------------------------------------
+
+    zero_params, total_params = count_zero_elements(model)
+    print(f"Number of zero elements: {zero_params}")
+    print(f"Total number of elements: {total_params}")
     if RANK in {-1, 0}:
         LOGGER.info(f"\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.")
         for f in last, best:
