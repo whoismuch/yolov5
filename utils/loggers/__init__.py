@@ -86,7 +86,8 @@ class Loggers:
             "train/box_loss",
             "train/obj_loss",
             "train/cls_loss",
-            "train/rademacher_loss", # train loss
+            "train/rademacher_loss",
+            "train/group_lasso", # train loss
             "metrics/precision",
             "metrics/recall",
             "metrics/mAP_0.5",
@@ -94,7 +95,8 @@ class Loggers:
             "val/box_loss",
             "val/obj_loss",
             "val/cls_loss",
-            "val/rademacher_loss", # val loss
+            "val/rademacher_loss",
+            "val/group_lasso", # val loss
             "x/lr0",
             "x/lr1",
             "x/lr2",
@@ -190,7 +192,7 @@ class Loggers:
 
     def on_train_batch_end(self, model, ni, imgs, targets, paths, vals):
         """Logs training batch end events, plots images, and updates external loggers with batch-end data."""
-        log_dict = dict(zip(self.keys[:4], vals))
+        log_dict = dict(zip(self.keys[:5], vals))
         # Callback runs on train batch end
         # ni: number integrated batches (since train start)
         if self.plots:
@@ -312,7 +314,7 @@ class Loggers:
                 self.tb.add_image(f.stem, cv2.imread(str(f))[..., ::-1], epoch, dataformats="HWC")
 
         if self.wandb:
-            self.wandb.log(dict(zip(self.keys[4:11], results)))
+            self.wandb.log(dict(zip(self.keys[5:12], results)))
             self.wandb.log({"Results": [wandb.Image(str(f), caption=f.name) for f in files]})
             # Calling wandb.log. TODO: Refactor this into WandbLogger.log_model
             if not self.opt.evolve:
@@ -325,14 +327,14 @@ class Loggers:
             self.wandb.finish_run()
 
         if self.clearml and not self.opt.evolve:
-            self.clearml.log_summary(dict(zip(self.keys[4:11], results)))
+            self.clearml.log_summary(dict(zip(self.keys[5:12], results)))
             [self.clearml.log_plot(title=f.stem, plot_path=f) for f in files]
             self.clearml.log_model(
                 str(best if best.exists() else last), "Best Model" if best.exists() else "Last Model", epoch
             )
 
         if self.comet_logger:
-            final_results = dict(zip(self.keys[4:11], results))
+            final_results = dict(zip(self.keys[5:12], results))
             self.comet_logger.on_train_end(files, self.save_dir, last, best, epoch, final_results)
 
     def on_params_update(self, params: dict):
