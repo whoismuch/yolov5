@@ -280,14 +280,9 @@ class ComputeLoss:
         lcls *= self.hyp["cls"]
         bs = tobj.shape[0]  # batch size
 
-
-
         # Add Group Lasso loss
-        group_lasso_loss = self.compute_group_lasso_loss()
+        group_lasso_loss = self.compute_group_lasso_loss() * self.group_lasso_weight
         group_lasso_loss_tensor = torch.tensor(group_lasso_loss).unsqueeze(0)
-
-        # return (lbox + lobj + lcls + group_lasso_loss) * bs, torch.cat(
-        #     (lbox, lobj, lcls, group_lasso_loss.unsqueeze(0))).detach()
 
         # Rademacher regularization
         rademacher_penalty = self.rademacher_lambda * self.compute_rademacher_complexity()
