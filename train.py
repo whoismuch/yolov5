@@ -323,7 +323,7 @@ def train(hyp, opt, device, callbacks):
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper, stop = EarlyStopping(patience=opt.patience), False
-    compute_loss = ComputeLoss(model, rademacher_lambda=0.0005, group_lasso_weight=0.6)  # init loss class
+    compute_loss = ComputeLoss(model, rademacher_lambda=0.005, group_lasso_weight=1.0)  # init loss class
     callbacks.run("on_train_start")
     LOGGER.info(
         f'Image sizes {imgsz} train, {imgsz} val\n'
